@@ -19,6 +19,10 @@ La classe `StopWatch` a été choisie pour sa simplicité, sa précision et sa f
 **Intention du test :**
 Ce test vérifie que quand on démarre le chronomètre et qu’on l’arrête, il mesure bien un temps positif.
 
+**Données de test :**
+- Un objet StopWatch vide (new StopWatch()).
+- Une pause courte de ~2 millisecondes entre le start() et le stop().
+
 **Oracles :** Le comportement attendu est que le temps mesuré par le chronomètre soit strictement positif après un appel à **start()** suivi de **stop()**. Cela repose sur l'hypothèse que l'horloge système **(System.nanoTime())** avance toujours et que le temps écoulé entre les deux appels est non nul.
 
 
@@ -29,6 +33,10 @@ Ce test vérifie que quand on démarre le chronomètre et qu’on l’arrête, i
 **Intention du test :**
 Ce test compare les deux méthodes de mesure : **getNanos()** et **getSeconds()**.
 
+**Données de test :**
+- Un StopWatch démarré, attente d’environ 3 ms, puis arrêté.
+- L’oracle est la formule de conversion entre nanosecondes et secondes.
+
 **Oracles :** Le comportement attendu est que la méthode **getSeconds()** retourne une valeur cohérente avec **getNanos() / 1e9**. L'assertion compare ces deux valeurs avec une tolérance **(1e-9)** pour tenir compte des imprécisions dues aux calculs en virgule flottante
 
 ---
@@ -37,6 +45,10 @@ Ce test compare les deux méthodes de mesure : **getNanos()** et **getSeconds()*
 
 **Intention du test :**
 On teste la méthode **getCurrentSeconds()** pendant que le chrono tourne pour prouver que le temps augmente tant que le chrono n’est pas arrêté
+
+**Données de test :**
+- Un StopWatch lancé (start()),
+- Deux appels espacés de quelques millisecondes à getCurrentSeconds().
 
 **Oracles :**
 Le comportement attendu est que la valeur retournée par **getCurrentSeconds()** augmente pendant que le chronomètre est en cours d'exécution. Cela est vérifié en comparant deux appels successifs à **getCurrentSeconds()** avec un délai entre eux.
@@ -47,6 +59,10 @@ Le comportement attendu est que la valeur retournée par **getCurrentSeconds()**
 
 **Intention du test :**
 Ce test vérifie que **getTimeString()** affiche bien une unité de temps correcte.
+
+**Données de test :**
+- Cas 1 : StopWatch démarrée et arrêtée immédiatement.
+- Cas 2 : StopWatch démarrée, délai de 5 millisecondes (Thread.sleep(5)), puis arrêtée.
 
 **Oracles :**
 Le comportement attendu est que la méthode **getTimeString()** retourne une chaîne contenant une unité de temps valide (ns, µs, ms, ou s). Cela est déterminé en vérifiant que la chaîne contient l'une de ces unités, en fonction de la durée mesurée.
@@ -59,6 +75,9 @@ Le comportement attendu est que la méthode **getTimeString()** retourne une cha
 **Intention du test :**
 Ce test vérifie que si on donne un nom au chronomètre (ici "Timer")
 
+**Données de test :**
+- StopWatch sw = new StopWatch("Timer");
+
 **Oracles :**
 Le comportement attendu est que la méthode **toString()** inclut le nom passé au constructeur si un nom est défini. Cela est vérifié en s'assurant que la sortie commence par le nom donné.
 
@@ -69,6 +88,10 @@ Le comportement attendu est que la méthode **toString()** inclut le nom passé 
 **Intention du test :**
 Ce test vérifie qu’on peut appeler **stop()** même sans avoir appelé **start()** avant.
 
+**Données de test :**
+- StopWatch sw = new StopWatch();
+- Appel direct à sw.stop() sans jamais appeler start().
+
 **Oracles :**
 Le comportement attendu est que l'appel à **stop()** avant **start()** ne provoque pas d'erreur et que le temps mesuré reste valide (supérieur ou égal à zéro). Cela repose sur la gestion correcte des états internes de la classe.
 
@@ -78,6 +101,11 @@ Le comportement attendu est que l'appel à **stop()** avant **start()** ne provo
 
 **Intention du test :**
 Ce test Vérifie que le nom aléatoire crée par un faker se retrouve bien dans la sortie texte
+
+**Données de test :**
+- String randomName = new Faker().app().name();
+- StopWatch sw = new StopWatch(randomName);
+
 **Oracles :**
 Le comportement attendu est que le nom aléatoire généré par Faker apparaisse dans la sortie de la méthode **toString()**. Cela est vérifié en s'assurant que la chaîne retournée contient le nom généré ou une partie standard de la sortie **(time:)**.
 
@@ -110,12 +138,15 @@ Le comportement attendu est que le nom aléatoire généré par Faker apparaisse
 ---
 
 ### Détails
-- Avant, `StopWatch` était très peu sollicité par les tests → beaucoup de mutants survivaient.
-- Nos 7 tests tuent 16 mutants de plus (2 → 18), principalement :
-- Calculs (conversion ns→s via l’oracle du **Test 2**),
-- Valeurs en cours (**Test 3** : progression du temps),
-- Formatage (**Test 4** : unités cohérentes).
-- Les mutants restants concernent surtout des chemins longs de formatage (minutes/heures) et quelques subtilités textuelles qui demanderaient soit des délais plus grands, soit un “mock du temps”
+Lors de l’exécution de PIT, la classe StopWatch a généré **65 mutants**. Les tests d’origine n’en détectaient que **2**, ce qui correspondait à une couverture de mutation très faible **(3 %)**. Après l’ajout de nos **7** nouveaux tests, nous avons réussi à tuer **18 mutants**, soit une amélioration significative **(28 % de couverture de mutation)**.
+Les nouveaux tests ont permis de repérer plusieurs types d’erreurs potentielles dans la classe.
+Par exemple, le test `testGetSecondsOracleComparison()` détecte les **mutants arithmétiques** qui modifient la conversion entre nanosecondes et secondes.
+Le test `testGetCurrentSecondsWhileRunning()` détecte les **mutations logiques** où les conditions if **(running)** sont inversées, tandis que `testStopWithoutStartDoesNotCrash()` élimine les mutants qui suppriment **les vérifications internes de robustesse**.
+Les tests `testGetTimeStringCoversAllUnits()` et `testToStringIncludesNameIfPresent()` capturent des mutants liés au **formatage du texte** (unités erronées, chaînes nulles, etc.).
+Enfin, le test avec Java Faker valide la résistance du code face à des entrées dynamiques, ce qui aide à détecter les mutants liés à des chaînes aléatoires.
+En résumé, nos ajouts ont permis de couvrir plusieurs aspects auparavant non testés :
+**les calculs temporels, la gestion des conditions logiques, les conversions d’unités, et le formatage du texte.**
+Il reste quelques mutants survivants, principalement associés aux conversions en minutes et heures, que nous n’avons pas testées pour éviter d’allonger inutilement le temps d’exécution.
 
 
 ## Java Faker
