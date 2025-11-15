@@ -1,0 +1,19 @@
+name: Rickroll
+description: Ajoute un Rickroll au résumé du job quand on l’invoque
+runs:
+  using: composite
+  steps:
+    - name: Drop the beat
+      shell: bash
+      run: |
+        cat << 'EOF' >> "$GITHUB_STEP_SUMMARY"
+        ## Never Gonna Give You Up
+        Les tests ont échoué on ne va pas te laisser tomber, mais on va te Rickroller :
+        Lien magique : (https://www.youtube.com/watch?v=dQw4w9WgXcQ)
+
+        ![Rickroll](https://media.giphy.com/media/Vuw9m5wXviFIQ/giphy.gif)
+        EOF
+    - name: Console link
+      shell: bash
+      run: |
+        echo 'Rickrolled: https://www.youtube.com/watch?v=dQw4w9WgXcQ'
