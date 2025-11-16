@@ -39,7 +39,8 @@ jobs:
 
       #Modification du workflow GitHub
       - name: Run PIT mutation tests
-        run: mvn -B org.pitest:pitest-maven:mutationCoverage
+        run: mvn -B org.pitest:pitest-maven:1.20.3:mutationCoverage -DargLine=""
+
       - name: Fail on mutation regression
         shell: bash
         run: |
