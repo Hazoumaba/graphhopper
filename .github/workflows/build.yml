@@ -39,17 +39,16 @@ jobs:
 
       #Modification du workflow GitHub
       - name: Run PIT mutation tests
-        run: mvn -f core/pom.xml org.pitest:pitest-maven:1.20.3:mutationCoverage -DargLine=""
+        run: mvn -B -pl core -am org.pitest:pitest-maven:1.20.3:mutationCoverage -DargLine=""
 
       - name: Fail on mutation regression
         shell: bash
         run: |
           BASELINE=$(cat ci/mutation-baseline.txt)
-          CURRENT=$(jq -r '.summary.mutationScore' target/pit-reports/mutation-testing-elements-report.json)
+          CURRENT=$(jq -r '.summary.mutationScore' core/target/pit-reports/mutation-testing-elements-report.json)
           echo "Baseline: $BASELINE%"
           echo "Current: $CURRENT%"
           awk -v base="$BASELINE" -v cur="$CURRENT" 'BEGIN { exit (cur + 0.0001 < base) }'
-          rickroll-on-fail:
   rickroll-on-fail:
     name: Rickroll on failure
     needs: build
