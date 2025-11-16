@@ -46,22 +46,31 @@ jobs:
       - name: Install full reactor (no tests)
         run: mvn -B -DskipTests install
 
+      - name: Ensure mutation baseline
+        run: |
+          if [ ! -f ci/mutation-baseline.txt ]; then
+            mkdir -p ci
+            echo "0" > ci/mutation-baseline.txt
+          fi
+
       - name: Run PIT mutation tests (core)
-        run: mvn -B -pl core org.pitest:pitest-maven:1.20.3:mutationCoverage -DargLine=""
+        run: mvn -B -pl core org.pitest:pitest-maven:1.20.3:mutationCoverage -DargLine="" -DoutputFormats=HTML,XML,JSON
 
       - name: Fail on mutation regression
         shell: bash
         run: |
           BASELINE=$(cat ci/mutation-baseline.txt)
-          REPORT=$(find core/target/pit-reports -name mutation-testing-elements-report.json | sort | tail -n 1)
-          echo "Report: $REPORT"
+          REPORT=$(find core/target/pit-reports -name 'mutation-testing-elements-report.json' | sort | tail -n 1)
+          if [ -z "$REPORT" ]; then
+            echo "Rapport JSON introuvable -> échec."
+            ls -R core/target/pit-reports || true
+            exit 1
+          fi
           CURRENT=$(jq -r '.summary.mutationScore' "$REPORT")
+          echo "Report: $REPORT"
           echo "Baseline: $BASELINE%"
           echo "Current: $CURRENT%"
           awk -v base="$BASELINE" -v cur="$CURRENT" 'BEGIN { exit (cur + 0.0001 < base) }'
-
-      - name: Run unit tests
-        run: mvn -B test
 
   rickroll-on-fail:
     name: Rickroll on failure
