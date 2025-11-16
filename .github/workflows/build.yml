@@ -69,25 +69,43 @@ jobs:
             exit 1
           fi
           
-          # Extraction du score depuis le fichier XML
-          CURRENT=$(xmllint --xpath 'string(//mutation/@mutationScore)' "$REPORT" 2>/dev/null || echo "0")
+          # Extraction correcte depuis la structure XML de PIT
+          CURRENT=$(xmllint --xpath 'string(//mutations/@mutationScore)' "$REPORT" 2>/dev/null)
+          
+          # Si l'extraction échoue, essayer une autre structure
+          if [ -z "$CURRENT" ] || [ "$CURRENT" = "" ]; then
+            CURRENT=$(xmllint --xpath "string(//mutation[1]/@detected)" "$REPORT" 2>/dev/null)
+            if [ "$CURRENT" = "true" ]; then
+              # Calculer le score manuellement
+              KILLED=$(xmllint --xpath 'count(//mutation[@detected="true"])' "$REPORT")
+              TOTAL=$(xmllint --xpath 'count(//mutation)' "$REPORT")
+              CURRENT=$(awk -v k="$KILLED" -v t="$TOTAL" 'BEGIN { printf "%.2f", (k/t)*100 }')
+            fi
+          fi
+          
+          # Fallback si toujours vide
+          if [ -z "$CURRENT" ] || [ "$CURRENT" = "" ]; then
+            echo "Impossible d'extraire le score, inspection du XML:"
+            head -n 50 "$REPORT"
+            CURRENT="0"
+          fi
           
           echo "Rapport: $REPORT"
           echo "Baseline: ${BASELINE}%"
           echo "Score actuel: ${CURRENT}%"
           
-          # Comparaison avec tolérance de 0.01% pour éviter les faux positifs
           awk -v base="$BASELINE" -v cur="$CURRENT" 'BEGIN { 
             if (cur + 0.0001 < base) {
               print "RÉGRESSION: Le score de mutation a baissé!"
-              print "   Attendu: >= " base "%"
-              print "   Obtenu: " cur "%"
+              print "Attendu: >= " base "%"
+              print "Obtenu: " cur "%"
               exit 1
             } else {
               print "Score de mutation acceptable"
               exit 0
             }
           }'
+
 
       - name: Run unit tests
         run: mvn -B test
