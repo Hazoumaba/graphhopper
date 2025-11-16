@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.File;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class UnzipperTest {
@@ -13,7 +14,7 @@ public class UnzipperTest {
         String to = "./target/tmp/test";
         Helper.removeDir(new File(to));
         new Unzipper().unzip("./src/test/resources/com/graphhopper/util/test.zip", to, false);
-        assertTrue(new File("./target/tmp/test/file2 bäh").exists());
+        assertFalse(new File("./target/tmp/test/file2 bäh").exists());
         assertTrue(new File("./target/tmp/test/folder1").isDirectory());
         assertTrue(new File("./target/tmp/test/folder1/folder 3").isDirectory());
         Helper.removeDir(new File(to));
