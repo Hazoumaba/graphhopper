@@ -42,11 +42,11 @@ jobs:
       - name: Install tools
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Build reactor (install without tests)
-        run: mvn -B -DskipTests install
+      - name: Install web-api module
+        run: mvn -B -pl web-api -am -DskipTests install
 
       - name: Run PIT mutation tests (core)
-        run: mvn -B -pl core -am org.pitest:pitest-maven:1.20.3:mutationCoverage -DargLine=""
+        run: mvn -B -pl core org.pitest:pitest-maven:1.20.3:mutationCoverage -DargLine=""
 
       - name: Fail on mutation regression
         shell: bash
