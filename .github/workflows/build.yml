@@ -42,8 +42,9 @@ jobs:
       - name: Install tools
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Install web-api module
-        run: mvn -B -pl web-api -am -DskipTests install
+      # Installe tout le réacteur
+      - name: Install full reactor (no tests)
+        run: mvn -B -DskipTests install
 
       - name: Run PIT mutation tests (core)
         run: mvn -B -pl core org.pitest:pitest-maven:1.20.3:mutationCoverage -DargLine=""
