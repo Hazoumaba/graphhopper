@@ -209,6 +209,7 @@
 
                 <configuration>
                     <jvmArgs>
+                        <param>${argLine}</param>
                         <param>-Xmx4G</param>
                     </jvmArgs>
                     <threads>1</threads>
