@@ -9,10 +9,12 @@ jobs:
         java-version: [ 24, 25-ea ]
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.java-version }}
           distribution: temurin
+
       - name: Cache Maven artifacts
         uses: actions/cache@v4
         with:
@@ -20,6 +22,7 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
+
       - name: Cache node
         uses: actions/cache@v4
         with:
@@ -27,6 +30,7 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os}}-node-
+
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
@@ -34,21 +38,30 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/pom.xml', '**/package.json') }}
           restore-keys: |
             ${{ runner.os}}-node_modules-
-      - name: Build ${{ matrix.java-version }}
-        run: mvn -B clean test
 
-      #Modification du workflow GitHub
-      - name: Run PIT mutation tests
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Build reactor (install without tests)
+        run: mvn -B -DskipTests install
+
+      - name: Run PIT mutation tests (core)
         run: mvn -B -pl core -am org.pitest:pitest-maven:1.20.3:mutationCoverage -DargLine=""
 
       - name: Fail on mutation regression
         shell: bash
         run: |
           BASELINE=$(cat ci/mutation-baseline.txt)
-          CURRENT=$(jq -r '.summary.mutationScore' core/target/pit-reports/mutation-testing-elements-report.json)
+          REPORT=$(find core/target/pit-reports -name mutation-testing-elements-report.json | sort | tail -n 1)
+          echo "Report: $REPORT"
+          CURRENT=$(jq -r '.summary.mutationScore' "$REPORT")
           echo "Baseline: $BASELINE%"
           echo "Current: $CURRENT%"
           awk -v base="$BASELINE" -v cur="$CURRENT" 'BEGIN { exit (cur + 0.0001 < base) }'
+
+      - name: Run unit tests
+        run: mvn -B test
+
   rickroll-on-fail:
     name: Rickroll on failure
     needs: build
@@ -57,5 +70,3 @@ jobs:
     steps:
       - name: Never gonna give you up
         uses: ./.github/actions/action.yml
-
-
