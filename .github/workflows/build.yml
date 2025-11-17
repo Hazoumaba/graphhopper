@@ -106,7 +106,6 @@ jobs:
               exit 0
             }
           }'
-
       - name: Auto-update mutation baseline on improvement
         if: ${{ success() && github.event_name == 'push' && github.ref == 'refs/heads/master' }}
         shell: bash
@@ -114,19 +113,44 @@ jobs:
           set -euo pipefail
           base='${{ steps.pit.outputs.baseline }}'
           cur='${{ steps.pit.outputs.current }}'
-          # Met à jour seulement si amélioration significative
           improved=$(awk -v base="$base" -v cur="$cur" 'BEGIN{print (cur > base + 0.0001) ? "yes" : "no"}')
-          if [ "$improved" = "yes" ]; then
-            echo "$cur" > ci/mutation-baseline.txt
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add 'ci/mutation-baseline.txt'
-            git commit -m "ci: bump mutation baseline to ${cur}% [skip ci]" || exit 0
-            git push
-            echo "Baseline mis à jour à ${cur}%"
-          else
-            echo "Pas d'amélioration, baseline inchangé (${base}%)."
+          if [ "$improved" != "yes" ]; then
+            echo "Pas d'amélioration (baseline=${base}%)."
+            exit 0
           fi
+
+          echo "$cur" > ci/mutation-baseline.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci/mutation-baseline.txt
+          git commit -m "ci: bump mutation baseline to ${cur}% [skip ci]" || exit 0
+
+          attempt=0
+          max=3
+          while [ $attempt -lt $max ]; do
+            attempt=$((attempt+1))
+            echo "Tentative push #$attempt"
+            # Synchronise avec remote
+            git fetch origin master
+            # Rebase sur dernière version distante
+            git rebase origin/master || {
+              echo "Conflit: reset sur origin/master et ré-applique baseline"
+              git reset --hard origin/master
+              echo "$cur" > ci/mutation-baseline.txt
+              git add ci/mutation-baseline.txt
+              git commit -m "ci: bump mutation baseline to ${cur}% [skip ci]" || true
+            }
+            # Push
+            if git push origin HEAD:master ; then
+              echo "Baseline mis à jour à ${cur}%"
+              exit 0
+            fi
+            echo "Push rejeté, nouvelle tentative..."
+            sleep 2
+          done
+
+          echo "Échec après ${max} tentatives (concurrence trop élevée)"
+          exit 1
 
       - name: Run unit tests
         run: mvn -B test
