@@ -56,45 +56,46 @@ jobs:
       - name: Run PIT mutation tests (core)
         run: mvn -B -pl core org.pitest:pitest-maven:1.20.3:mutationCoverage -DargLine="" -DoutputFormats=HTML,XML
 
-      - name: Fail on mutation regression
+      - name: Parse PIT and expose score
+        id: pit
         shell: bash
         run: |
-          BASELINE=$(cat ci/mutation-baseline.txt)
-          REPORT=$(find core/target/pit-reports -name 'mutations.xml' | sort | tail -n 1)
-          
-          if [ -z "$REPORT" ]; then
+          set -euo pipefail
+          BASELINE=$(cat ci/mutation-baseline.txt 2>/dev/null || echo "0")
+          REPORT=$(find core/target/pit-reports -name 'mutations.xml' | sort | tail -n 1 || true)
+
+          if [ -z "${REPORT:-}" ]; then
             echo "Rapport XML PIT introuvable"
-            echo "Contenu de core/target/pit-reports:"
-            ls -R core/target/pit-reports || echo "Répertoire inexistant"
             exit 1
           fi
-          
-          # Extraction correcte depuis la structure XML de PIT
-          CURRENT=$(xmllint --xpath 'string(//mutations/@mutationScore)' "$REPORT" 2>/dev/null)
-          
-          # Si l'extraction échoue, essayer une autre structure
-          if [ -z "$CURRENT" ] || [ "$CURRENT" = "" ]; then
-            CURRENT=$(xmllint --xpath "string(//mutation[1]/@detected)" "$REPORT" 2>/dev/null)
-            if [ "$CURRENT" = "true" ]; then
-              # Calculer le score manuellement
-              KILLED=$(xmllint --xpath 'count(//mutation[@detected="true"])' "$REPORT")
-              TOTAL=$(xmllint --xpath 'count(//mutation)' "$REPORT")
-              CURRENT=$(awk -v k="$KILLED" -v t="$TOTAL" 'BEGIN { printf "%.2f", (k/t)*100 }')
-            fi
+
+          # Tente lecture directe, sinon calcule (KILLED / TOTAL) * 100
+          CURRENT=$(xmllint --xpath 'string(//mutations/@mutationScore)' "$REPORT" 2>/dev/null || true)
+          if [ -z "$CURRENT" ]; then
+            KILLED=$(xmllint --xpath 'count(//mutation[@detected="true"])' "$REPORT")
+            TOTAL=$(xmllint --xpath 'count(//mutation)' "$REPORT")
+            if [ "$TOTAL" = "0" ]; then CURRENT="0"; else CURRENT=$(awk -v k="$KILLED" -v t="$TOTAL" 'BEGIN{printf "%.2f",(k/t)*100}'); fi
           fi
-          
-          # Fallback si toujours vide
-          if [ -z "$CURRENT" ] || [ "$CURRENT" = "" ]; then
-            echo "Impossible d'extraire le score, inspection du XML:"
-            head -n 50 "$REPORT"
-            CURRENT="0"
+
+          # Valide numérique
+          if ! [[ "$CURRENT" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+            echo "Score de mutation invalide: '$CURRENT'"
+            exit 1
           fi
-          
+
           echo "Rapport: $REPORT"
           echo "Baseline: ${BASELINE}%"
           echo "Score actuel: ${CURRENT}%"
-          
-          awk -v base="$BASELINE" -v cur="$CURRENT" 'BEGIN { 
+
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "baseline=$BASELINE" >> "$GITHUB_OUTPUT"
+
+      - name: Fail on mutation regression
+        shell: bash
+        run: |
+          base='${{ steps.pit.outputs.baseline }}'
+          cur='${{ steps.pit.outputs.current }}'
+          awk -v base="$base" -v cur="$cur" 'BEGIN {
             if (cur + 0.0001 < base) {
               print "RÉGRESSION: Le score de mutation a baissé!"
               print "Attendu: >= " base "%"
@@ -106,6 +107,26 @@ jobs:
             }
           }'
 
+      - name: Auto-update mutation baseline on improvement
+        if: ${{ success() && github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='${{ steps.pit.outputs.baseline }}'
+          cur='${{ steps.pit.outputs.current }}'
+          # Met à jour seulement si amélioration significative
+          improved=$(awk -v base="$base" -v cur="$cur" 'BEGIN{print (cur > base + 0.0001) ? "yes" : "no"}')
+          if [ "$improved" = "yes" ]; then
+            echo "$cur" > ci/mutation-baseline.txt
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add 'ci/mutation-baseline.txt'
+            git commit -m "ci: bump mutation baseline to ${cur}% [skip ci]" || exit 0
+            git push
+            echo "Baseline mis à jour à ${cur}%"
+          else
+            echo "Pas d'amélioration, baseline inchangé (${base}%)."
+          fi
 
       - name: Run unit tests
         run: mvn -B test
