@@ -163,4 +163,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Never gonna give you up
-        uses: ./.github/actions/action.yml
+        uses: ./.github/actions/rickroll
