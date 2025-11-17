@@ -158,7 +158,7 @@ jobs:
   rickroll-on-fail:
     name: Rickroll on failure
     needs: build
-    if: ${{ needs.build.result == 'failure' }}
+    if: ${{ always() && needs.build.result == 'failure' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
