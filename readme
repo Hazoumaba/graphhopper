@@ -130,36 +130,41 @@ Sans tests unitaires pour cette classe, PIT génère environ 8-10 mutations non 
 **Résultat attendu** :
 - Création automatique du fichier avec `0`
 - Build passe même si le score est faible
+- Baseline à la fin `44.76%`
 
 #### Scénario 2 : Régression détectée (classe `untestedCalculator`)
 **Action** :
-1. Baseline existante à `75.50%`
+1. Baseline existante à `44.76%`
 2. Ajout de `untestedCalculator.java` sans tests
 3. Commit et push
 
 **Résultat observé** :
 ```
 RÉGRESSION: Le score de mutation a baissé!
-Attendu: >= 75.5%
-Obtenu: 68.3%
+Attendu: >= 44.76%
+Obtenu: 44.59%
 ```
 
 **Explication** :
-- Score global chute de ~7%
+- Score global chute de ~0.2%
 
-- Le build échoue à l'étape **"Fail on mutation regression"** mais pas de stress tu peux trouver la solution dans l'étape **solution** (https://www.youtube.com/watch?v=dQw4w9WgXcQ) qui se déclenche directement on cas d'échec.
+- Le build échoue à l'étape **"Fail on mutation regression"** mais pas de stress tu peux trouver la solution dans l'étape **Never Gonna give you up** de l'action solution qui se déclenche directement on cas d'échec. (https://www.youtube.com/watch?v=dQw4w9WgXcQ)
 
-#### Scénario 3 : Amélioration du score (ajout de tests Mockito)
+#### Scénario 3 : Amélioration des scores avec des tests triviales (classe `untestedCalculatorTest` haha)
 **Action** :
-1. Baseline à `68.30%` (après ajout de `untestedCalculator`)
-2. Ajout de `ElevationInterpolatorMockitoTest` et `EdgeElevationInterpolatorMockitoTest`
-3. Commit et push sur `master`
+1. Baseline existante à `44.76%`
+2. Ajout de `untestedCalculatorTest.java`
+3. Commit et push
 
 **Résultat observé** :
-- Tests passent
-- Nouveau score : `73.80%` (+5.5%)
+```
+Baseline: 44.76%
+Score actuel: 44.81%
+Score de mutation acceptable
+```
 
-
+**Explication** :
+- Score global augmente de ~0.05% par rapport à la baseline initiale avant la chute
 ---
 
 ---
@@ -272,6 +277,5 @@ void executeSkipsWhenNoInterpolatableEdgesArePresent() {
 ## Conclusion
 
 Cette modification empêche la dégradation de la qualité des tests tout en encourageant l'amélioration continue.
-
-L'expérimentation avec `untestedCalculator` démontre que le système détecte immédiatement les régressions, tandis que les tests Mockito bien conçus prouvent qu'il est possible de remonter le score efficacement.
+L'expérimentation avec `untestedCalculator` démontre que le système détecte immédiatement les régressions.
 
