@@ -1,0 +1,277 @@
+# Documentation - Tache 3 - 3913
+- **Hazem Ben Amor 20236062**
+- **Yasmine Ben Youssef**
+
+## Choix de conception du workflow
+Cette modification du workflow GitHub Actions introduit un mécanisme de **mutation testing**
+avec un système de baseline qui garantit que la qualité des tests ne régresse jamais.
+Le workflow échoue automatiquement si le score de mutation diminue par rapport à la baseline établie.
+### 1. **Stockage de la baseline dans le dépôt**
+
+**Choix** : Fichier `ci/mutation-baseline.txt` versionné dans Git
+
+**Justification** :
+- **Transparence** : La baseline est visible dans l'historique Git
+- **Cohérence** : La baseline est synchronisée avec le code qu'elle valide
+---
+
+### 2. **Initialisation automatique de la baseline**
+
+**Implémentation** :
+```bash
+if [ ! -f ci/mutation-baseline.txt ]; then
+  mkdir -p ci
+  echo "0" > ci/mutation-baseline.txt
+  echo "Baseline créée avec valeur initiale 0%"
+fi
+```
+
+**Justification** :
+- Permet l'adoption progressive : un projet existant peut démarrer à 0% sans bloquer les builds
+
+---
+### 3. **Extraction du score de mutation**
+
+**Implémentation** :
+```bash
+CURRENT=$(xmllint --xpath 'string(//mutations/@mutationScore)' "$REPORT" 2>/dev/null || true)
+if [ -z "$CURRENT" ]; then
+  KILLED=$(xmllint --xpath 'count(//mutation[@detected="true"])' "$REPORT")
+  TOTAL=$(xmllint --xpath 'count(//mutation)' "$REPORT")
+  if [ "$TOTAL" = "0" ]; then 
+    CURRENT="0"
+  else 
+    CURRENT=$(awk -v k="$KILLED" -v t="$TOTAL" 'BEGIN{printf "%.2f",(k/t)*100}')
+  fi
+fi
+```
+
+**Choix de conception** :
+- **Double stratégie** : Lecture directe de l'attribut `@mutationScore`, sinon calcul manuel
+- **Robustesse** : Gère les cas où PIT n'expose pas le score directement
+**Validation numérique** : Protection contre les erreurs de parsing. :
+```bash
+if ! [[ "$CURRENT" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+  echo "Score de mutation invalide: '$CURRENT'"
+  exit 1
+fi
+```
+---
+### 4. **Détection de régression avec tolérance**
+
+**Implémentation** :
+```bash
+awk -v base="$base" -v cur="$cur" 'BEGIN {
+  if (cur + 0.0001 < base) {
+    print "RÉGRESSION: Le score de mutation a baissé!"
+    print "Attendu: >= " base "%"
+    print "Obtenu: " cur "%"
+    exit 1
+  } else {
+    print "Score de mutation acceptable"
+    exit 0
+  }
+}'
+```
+
+**Choix clé : Tolérance de 0.0001%**
+
+---
+
+### 5. **Mise à jour automatique de la baseline**
+
+**Condition d'exécution** :
+```yaml
+if: ${{ success() && github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+```
+**Implémentation du push avec retry** :
+```bash
+attempt=0
+max=3
+while [ $attempt -lt $max ]; do
+  git fetch origin master
+  git rebase origin/master || {
+    git reset --hard origin/master
+    echo "$cur" > ci/mutation-baseline.txt
+    git add ci/mutation-baseline.txt
+    git commit -m "ci: bump mutation baseline to ${cur}% [skip ci]" || true
+  }
+  if git push origin HEAD:master ; then
+    exit 0
+  fi
+  sleep 2
+done
+```
+
+**Gestion de la concurrence** :
+- **Problème** : Plusieurs builds en parallèle peuvent essayer de pusher simultanément
+- **Solution** : Rebase automatique + 3 tentatives avec délai exponentiel
+
+---
+
+### 6. **Validation de la modification**
+
+#### Classe de test : `untestedCalculator.java`
+
+Pour valider que le mécanisme de régression fonctionne correctement, une classe volontairement non testée a été introduite dans le module `core` qui contient des Méthodes de calcul triviales :
+
+**Emplacement** : `core/src/main/java/com/graphhopper/util/untestedCalculator.java`
+
+**Résultat observé** :
+Sans tests unitaires pour cette classe, PIT génère environ 8-10 mutations non tuées, ce qui provoque une **baisse mesurable** du score de mutation global et déclenche l'échec du build comme attendu.
+
+---
+
+### 7.Scénarios de validation du workflow
+
+#### Scénario 1 : Première exécution (pas de baseline)
+**Action** : Exécuter le workflow sans fichier `ci/mutation-baseline.txt`
+
+**Résultat attendu** :
+- Création automatique du fichier avec `0`
+- Build passe même si le score est faible
+
+#### Scénario 2 : Régression détectée (classe `untestedCalculator`)
+**Action** :
+1. Baseline existante à `75.50%`
+2. Ajout de `untestedCalculator.java` sans tests
+3. Commit et push
+
+**Résultat observé** :
+```
+RÉGRESSION: Le score de mutation a baissé!
+Attendu: >= 75.5%
+Obtenu: 68.3%
+```
+
+**Explication** :
+- Score global chute de ~7%
+
+- Le build échoue à l'étape **"Fail on mutation regression"** mais pas de stress tu peux trouver la solution dans l'étape **solution** (https://www.youtube.com/watch?v=dQw4w9WgXcQ) qui se déclenche directement on cas d'échec.
+
+#### Scénario 3 : Amélioration du score (ajout de tests Mockito)
+**Action** :
+1. Baseline à `68.30%` (après ajout de `untestedCalculator`)
+2. Ajout de `ElevationInterpolatorMockitoTest` et `EdgeElevationInterpolatorMockitoTest`
+3. Commit et push sur `master`
+
+**Résultat observé** :
+- Tests passent
+- Nouveau score : `73.80%` (+5.5%)
+
+
+---
+
+---
+
+## Tests unitaires avec Mockito
+### Test 1 : `ElevationInterpolatorMockitoTest.java`
+
+**Classe testée** : `ElevationInterpolator` : Classe de calcul géométrique
+
+**Dépendance mockée** : `PointList`
+
+**Justification** :
+- Mocker permet de contrôler précisément les données d'entrée
+- Évite de créer des fixtures lourdes avec des vraies listes de points
+
+**Définition du mock** :
+```java
+@Mock
+private PointList pointList;
+```
+
+**Configuration du comportement simulé** :
+```java
+double[] lats = {10, 15, 20, 25};
+double[] lons = {0, 1, 2, 3};
+double[] eles = {100, 200, 500, 800};
+
+when(pointList.size()).thenReturn(lats.length);
+lenient().when(pointList.getLat(anyInt())).thenAnswer(inv -> lats[(int) inv.getArgument(0)]);
+lenient().when(pointList.getLon(anyInt())).thenAnswer(inv -> lons[(int) inv.getArgument(0)]);
+lenient().when(pointList.getEle(anyInt())).thenAnswer(inv -> eles[(int) inv.getArgument(0)]);
+```
+
+**Choix des valeurs simulées** :
+
+| Valeur | Justification |
+|--------|---------------|
+| **Latitudes** : `10, 15, 20, 25` | Espacées régulièrement de 5° pour tester l'interpolation linéaire |
+| **Longitudes** : `0, 1, 2, 3` | Progression simple pour vérifier l'indexation correcte |
+| **Élévations** : `100, 200, 500, 800` | Variations non linéaires pour détecter les erreurs d'interpolation |
+| **Point de requête** : `(20.000005, 2.000004)` | Très proche du point 2 (20, 2, 500) pour tester la correspondance exacte avec tolérance |
+
+**Assertion** :
+```java
+assertEquals(500.0, elevation, 0.001);
+verify(pointList, atLeastOnce()).getEle(2);
+```
+- Tolérance de `0.001` pour gérer les erreurs d'arrondi flottant
+- Vérifie que l'élévation du point 2 a été lue
+
+---
+
+### Test 2 : `EdgeElevationInterpolatorMockitoTest.java`
+
+**Classe testée** : `EdgeElevationInterpolator`
+
+**Justification du choix** :
+- Logique de parcours conditionnel
+- Cas d'usage : Interpolation d'élévation sur les ponts/tunnels du graphe routier
+
+**Dépendances mockées** :
+```java
+@Mock private BaseGraph graph;
+@Mock private NodeAccess nodeAccess;
+@Mock private AllEdgesIterator allEdgesIterator;
+@Mock private EdgeExplorer edgeExplorer;
+@Mock private EnumEncodedValue<RoadEnvironment> roadEnvEnc;
+```
+
+**Configuration initiale** :
+```java
+@BeforeEach
+void setUp() {
+    when(graph.getNodeAccess()).thenReturn(nodeAccess);
+    when(graph.getAllEdges()).thenReturn(allEdgesIterator);
+    when(graph.createEdgeExplorer()).thenReturn(edgeExplorer);
+    when(allEdgesIterator.length()).thenReturn(0);
+    when(allEdgesIterator.next()).thenReturn(false);
+    interpolator = new EdgeElevationInterpolator(graph, roadEnvEnc, RoadEnvironment.BRIDGE);
+}
+```
+
+**Choix des valeurs simulées** :
+
+| Valeur | Justification |
+|--------|---------------|
+| `length() = 0` | Simule un graphe vide (cas limite) |
+| `next() = false` | Aucune arête à parcourir (itérateur vide) |
+| `RoadEnvironment.BRIDGE` | Filtre sur les ponts uniquement (test d'un type spécifique) |
+
+**Test du comportement** :
+```java
+@Test
+void executeSkipsWhenNoInterpolatableEdgesArePresent() {
+    interpolator.execute();
+    verify(graph, times(2)).getAllEdges();
+    verify(allEdgesIterator, times(2)).next();
+    verify(nodeAccess, never()).setNode(anyInt(), anyDouble(), anyDouble(), anyDouble());
+}
+```
+
+**Assertions de vérification** :
+- `times(2)` : Vérifie que l'interpolateur fait 2 passes 
+- `never()` : Confirme qu'aucun nœud n'a été modifié (cohérent avec un graphe vide)
+
+---
+
+---
+
+## Conclusion
+
+Cette modification empêche la dégradation de la qualité des tests tout en encourageant l'amélioration continue.
+
+L'expérimentation avec `untestedCalculator` démontre que le système détecte immédiatement les régressions, tandis que les tests Mockito bien conçus prouvent qu'il est possible de remonter le score efficacement.
+
