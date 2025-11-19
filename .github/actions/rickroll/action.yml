@@ -1,4 +1,4 @@
-name: Rickroll
+name: solution
 description: Affiche un message et un lien en cas d'échec du build
 runs:
   using: composite
@@ -6,6 +6,6 @@ runs:
     - name: Message
       shell: bash
       run: |
-        echo "::group::Rickroll"
-        echo "Build échoué. Cadeau: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        echo "::group::Solution"
+        echo "Build échoué. Mais La solution est simple : https://www.youtube.com/watch?v=dQw4w9WgXcQ"
         echo "::endgroup::"
