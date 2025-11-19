@@ -155,12 +155,12 @@ jobs:
       - name: Run unit tests
         run: mvn -B test
 
-  rickroll-on-fail:
-    name: Rickroll on failure
+  Solution:
+    name: Solution
     needs: build
     if: ${{ always() && needs.build.result == 'failure' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Never gonna give you up
-        uses: ./.github/actions/rickroll
+        uses: ./.github/actions/solution
